@@ -1,0 +1,75 @@
+{
+  "expo": {
+    "name": "Savia",
+    "slug": "savia",
+    "scheme": "savia",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#F7F7FB",
+    "newArchEnabled": true,
+    "primaryColor": "#635BFF",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.savia.app"
+    },
+    "android": {
+      "package": "com.savia.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#F4F5FB",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_IMAGES"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 220,
+          "resizeMode": "contain",
+          "backgroundColor": "#F7F7FB"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O Savia precisa acessar seus vídeos para enviá-los como aulas.",
+          "microphonePermission": false,
+          "cameraPermission": false
+        }
+      ],
+      [
+        "expo-video",
+        {
+          "supportsBackgroundPlayback": false,
+          "supportsPictureInPicture": false
+        }
+      ],
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "9e05b829-eb64-4ad9-8138-a80e3787569f"
+      }
+    },
+    "owner": "jaraujodeveloper"
+  }
+}
