@@ -1,0 +1,141 @@
+import { useMemo } from 'react';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { router, useLocalSearchParams } from 'expo-router';
+import { Badge, Button, Card, EmptyState, ErrorState, LoadingState, Screen, TopBar } from '@/components/ui';
+import { colors, spacing, typography } from '@/theme';
+import { useAuth } from '@/domain/auth/AuthContext';
+import { useAsyncData } from '@/hooks/useAsyncData';
+import { fetchCourse } from '@/domain/courses/api';
+import { fetchLessons } from '@/domain/lessons/api';
+import { acceptSuggestion, rejectSuggestion } from '@/domain/studio/api';
+import { useImproveCourse, type ImproveStep } from '@/domain/studio/useImproveCourse';
+import { getErrorMessage } from '@/utils/errors';
+
+export default function CourseStudioScreen() {
+  const { courseId } = useLocalSearchParams<{ courseId: string }>();
+  const { account } = useAuth();
+
+  const { data: course } = useAsyncData(() => fetchCourse(courseId), [courseId]);
+  const { data: lessons, loading, error, refresh } = useAsyncData(() => fetchLessons(courseId), [courseId]);
+
+  const { steps, running, newSuggestions, coverGenerated, run } = useImproveCourse(account!.id, courseId);
+
+  const readyLessons = useMemo(() => (lessons ?? []).filter((l) => l.video?.status === 'ready'), [lessons]);
+
+  async function handleImproveCourse() {
+    if (readyLessons.length === 0) {
+      Alert.alert('Nenhuma aula pronta', 'Envie e aguarde pelo menos um vídeo terminar de processar antes de melhorar o curso.');
+      return;
+    }
+    await run(lessons ?? [], !!course?.cover_path);
+  }
+
+  async function handleAccept(suggestionId: string) {
+    const suggestion = newSuggestions.find((s) => s.id === suggestionId);
+    if (!suggestion) return;
+    try {
+      await acceptSuggestion(suggestion);
+      await refresh();
+    } catch (err) {
+      Alert.alert('Erro', getErrorMessage(err));
+    }
+  }
+
+  async function handleReject(suggestionId: string) {
+    try {
+      await rejectSuggestion(suggestionId);
+    } catch (err) {
+      Alert.alert('Erro', getErrorMessage(err));
+    }
+  }
+
+  if (loading) return <LoadingState />;
+  if (error) return <ErrorState message={error} onRetry={refresh} />;
+
+  return (
+    <Screen>
+      <TopBar title="Savia Studio" />
+      <Text style={styles.hint}>Deixe suas aulas prontas para ensinar.</Text>
+
+      <Button label="✨ Melhorar meu curso" onPress={handleImproveCourse} loading={running} />
+
+      {steps.length > 0 && (
+        <Card style={styles.checklist}>
+          {steps.map((step) => (
+            <StepRow key={step.key} step={step} />
+          ))}
+        </Card>
+      )}
+
+      {coverGenerated && (
+        <Button label="Ver opções de capa geradas" variant="secondary" onPress={() => router.push(`/(creator)/courses/${courseId}/cover`)} />
+      )}
+
+      {newSuggestions.length > 0 && (
+        <View style={styles.section}>
+          <Text style={typography.h3}>Revisar sugestões</Text>
+          <Text style={styles.hint}>Você decide o que aplicar. Nada foi alterado ainda.</Text>
+          {newSuggestions.map((suggestion) => (
+            <Card key={suggestion.id} style={styles.suggestionCard}>
+              <Text style={styles.label}>{suggestion.suggestion_type}</Text>
+              <Text style={typography.body}>{suggestion.content}</Text>
+              <View style={styles.row}>
+                <Button label="Ignorar" variant="secondary" fullWidth={false} onPress={() => handleReject(suggestion.id)} />
+                <Button label="Aceitar" fullWidth={false} onPress={() => handleAccept(suggestion.id)} />
+              </View>
+            </Card>
+          ))}
+        </View>
+      )}
+
+      <View style={styles.section}>
+        <Text style={typography.h3}>Aulas</Text>
+        {(lessons?.length ?? 0) === 0 && <EmptyState title="Nenhuma aula ainda" description="Envie vídeos no curso para usar o Studio." />}
+        {(lessons ?? []).map((lesson) => (
+          <Pressable key={lesson.id} onPress={() => router.push(`/(creator)/courses/${courseId}/lessons/${lesson.id}`)}>
+            <Card style={styles.lessonRow}>
+              <Text style={typography.bodyMedium} numberOfLines={1}>
+                {lesson.title}
+              </Text>
+              <View style={styles.row}>
+                <Badge
+                  label={lesson.video?.status === 'ready' ? 'Vídeo pronto' : lesson.video?.status === 'error' ? 'Erro' : 'Processando'}
+                  tone={lesson.video?.status === 'ready' ? 'success' : lesson.video?.status === 'error' ? 'danger' : 'warning'}
+                />
+              </View>
+            </Card>
+          </Pressable>
+        ))}
+      </View>
+    </Screen>
+  );
+}
+
+function StepRow({ step }: { step: ImproveStep }) {
+  const icon =
+    step.status === 'done' ? 'checkmark-circle' : step.status === 'error' ? 'close-circle' : step.status === 'running' ? 'ellipsis-horizontal-circle' : 'ellipse-outline';
+  const color = step.status === 'done' ? colors.success : step.status === 'error' ? colors.danger : step.status === 'running' ? colors.warning : colors.textMuted;
+
+  return (
+    <View style={styles.stepRow}>
+      <Ionicons name={icon} size={20} color={color} />
+      <View style={styles.stepText}>
+        <Text style={typography.body}>{step.label}</Text>
+        {!!step.detail && <Text style={styles.hint}>{step.detail}</Text>}
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  hint: { ...typography.caption },
+  checklist: { gap: spacing.sm },
+  stepRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  stepText: { flex: 1 },
+  section: { gap: spacing.sm },
+  suggestionCard: { gap: spacing.xs, backgroundColor: colors.surfaceMuted },
+  label: { ...typography.caption, color: colors.textSecondary, textTransform: 'capitalize' },
+  row: { flexDirection: 'row', gap: spacing.sm },
+  lessonRow: { gap: spacing.xs },
+});

@@ -1,6 +1,8 @@
 import { useCallback, useRef, useState } from 'react';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import { videoProvider } from '@/domain/videos';
 import { createLesson, nextOrderIndex } from '@/domain/lessons/api';
+import { setLessonThumbnail, uploadLessonThumbnail } from '@/domain/studio/api';
 
 export type QueueItemStatus = 'queued' | 'uploading' | 'creating_lesson' | 'done' | 'error';
 
@@ -70,6 +72,16 @@ export function useVideoUploadQueue(accountId: string, courseId: string) {
             videoId: result.videoId,
             orderIndex: orderIndex++,
           });
+
+          // Best-effort: a still frame is a nice-to-have, never worth failing
+          // the whole upload over if extraction/upload of it hiccups.
+          try {
+            const { uri: thumbnailUri } = await VideoThumbnails.getThumbnailAsync(file.uri, { time: 1000 });
+            const thumbnailPath = await uploadLessonThumbnail(accountId, result.videoId, thumbnailUri);
+            await setLessonThumbnail(result.videoId, thumbnailPath);
+          } catch {
+            // Ignored on purpose -- see comment above.
+          }
 
           patchItem(file.id, { status: 'done' });
         } catch (err) {

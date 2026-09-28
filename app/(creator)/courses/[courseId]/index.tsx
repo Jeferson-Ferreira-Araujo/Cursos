@@ -93,7 +93,9 @@ export default function CourseOverviewScreen() {
       </View>
 
       <View style={styles.actionsRow}>
-        <Button label="Editar curso" variant="secondary" onPress={() => router.push(`/(creator)/courses/${course.id}/edit`)} />
+        <Button label="Editar curso" variant="secondary" fullWidth={false} onPress={() => router.push(`/(creator)/courses/${course.id}/edit`)} />
+        <Button label="✨ Savia Studio" variant="secondary" fullWidth={false} onPress={() => router.push(`/(creator)/courses/${course.id}/studio`)} />
+        <Button label="✨ Gerar capa" variant="secondary" fullWidth={false} onPress={() => router.push(`/(creator)/courses/${course.id}/cover`)} />
       </View>
 
       <View style={styles.sectionHeader}>
@@ -133,7 +135,7 @@ export default function CourseOverviewScreen() {
 
 const styles = StyleSheet.create({
   statusRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  actionsRow: { flexDirection: 'row', gap: spacing.sm },
+  actionsRow: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   dangerZone: { marginTop: spacing.xl, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border },
 });

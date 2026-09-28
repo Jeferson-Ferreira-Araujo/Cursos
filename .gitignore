@@ -45,3 +45,4 @@ credentials.json
 /ios
 /android
 .claude/
+supabase/.temp/

@@ -9,6 +9,7 @@ export type VideoRecord = {
   mime_type: string | null;
   size_bytes: number | null;
   duration_seconds: number | null;
+  thumbnail_path: string | null;
   status: VideoStatus;
   error_message: string | null;
   created_at: string;

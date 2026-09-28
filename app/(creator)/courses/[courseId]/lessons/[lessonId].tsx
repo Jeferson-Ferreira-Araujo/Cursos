@@ -8,9 +8,12 @@ import { fetchLesson, updateLesson, deleteLesson } from '@/domain/lessons/api';
 import { videoProvider } from '@/domain/videos';
 import { lessonSchema, validate } from '@/utils/validation';
 import { getErrorMessage } from '@/utils/errors';
+import { useAuth } from '@/domain/auth/AuthContext';
+import { LessonStudioPanel } from '@/domain/studio/components/LessonStudioPanel';
 
 export default function EditLessonScreen() {
   const { lessonId } = useLocalSearchParams<{ courseId: string; lessonId: string }>();
+  const { account } = useAuth();
   const { data: lesson, loading, error, reload } = useAsyncData(() => fetchLesson(lessonId), [lessonId]);
 
   const [title, setTitle] = useState('');
@@ -104,6 +107,9 @@ export default function EditLessonScreen() {
       {!!formError && <Text style={styles.formError}>{formError}</Text>}
 
       <Button label="Salvar alterações" onPress={handleSave} loading={saving} />
+
+      {!!account && <LessonStudioPanel accountId={account.id} lesson={lesson} onLessonUpdated={reload} />}
+
       <Button label="Excluir aula" variant="danger" onPress={handleDelete} loading={deleting} />
     </Screen>
   );

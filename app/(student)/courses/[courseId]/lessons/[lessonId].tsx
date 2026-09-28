@@ -11,6 +11,8 @@ import { useAsyncData } from '@/hooks/useAsyncData';
 import { fetchLesson, fetchLessons } from '@/domain/lessons/api';
 import { fetchCourseProgress, saveLessonProgress } from '@/domain/progress/api';
 import { videoProvider } from '@/domain/videos';
+import { fetchCaption, fetchLessonChapters, fetchTranscription } from '@/domain/studio/api';
+import { formatDuration } from '@/utils/format';
 import { getErrorMessage } from '@/utils/errors';
 
 const PROGRESS_SAVE_INTERVAL_SECONDS = 5;
@@ -27,11 +29,17 @@ export default function LessonPlayerScreen() {
     () => fetchCourseProgress(courseId, studentId),
     [courseId, studentId]
   );
+  const videoId = lesson?.video_id ?? null;
+  const { data: caption } = useAsyncData(() => (videoId ? fetchCaption(videoId) : Promise.resolve(null)), [videoId]);
+  const { data: transcription } = useAsyncData(() => (videoId ? fetchTranscription(videoId) : Promise.resolve(null)), [videoId]);
+  const { data: chapters } = useAsyncData(() => fetchLessonChapters(lessonId), [lessonId]);
 
   const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
   const [showCompletedCelebration, setShowCompletedCelebration] = useState(false);
+  const [captionsVisible, setCaptionsVisible] = useState(true);
+  const [currentCaptionText, setCurrentCaptionText] = useState('');
   const hasSeekedRef = useRef(false);
 
   useEffect(() => {
@@ -96,6 +104,24 @@ export default function LessonPlayerScreen() {
     handleMarkCompleted();
   });
 
+  const captionsEnabled = caption?.position && caption.position !== 'off';
+
+  // Lightweight local polling for the on-screen caption text -- separate
+  // from the 5s progress-save interval above so the subtitle stays in sync
+  // without writing to the database more often than needed.
+  useEffect(() => {
+    if (!captionsEnabled || !transcription?.segments?.length) {
+      setCurrentCaptionText('');
+      return;
+    }
+    const interval = setInterval(() => {
+      const time = player.currentTime;
+      const segment = transcription.segments.find((s) => time >= s.start && time <= s.end);
+      setCurrentCaptionText(segment?.text ?? '');
+    }, 400);
+    return () => clearInterval(interval);
+  }, [captionsEnabled, transcription, player]);
+
   const { previousLesson, nextLesson } = useMemo(() => {
     const list = allLessons ?? [];
     const index = list.findIndex((l) => l.id === lessonId);
@@ -152,7 +178,7 @@ export default function LessonPlayerScreen() {
   }
 
   return (
-    <Screen scroll={false}>
+    <Screen>
       <TopBar title={lesson.title} onBack={() => router.replace(`/(student)/courses/${courseId}`)} />
 
       <View style={styles.playerWrapper}>
@@ -167,9 +193,50 @@ export default function LessonPlayerScreen() {
             <Text style={styles.placeholderText}>{playbackError}</Text>
           </View>
         ) : (
-          <VideoView player={player} style={styles.player} contentFit="contain" allowsFullscreen nativeControls />
+          <>
+            <VideoView player={player} style={styles.player} contentFit="contain" allowsFullscreen nativeControls />
+            {captionsEnabled && captionsVisible && !!currentCaptionText && (
+              <View style={[styles.captionBox, caption?.position === 'top' ? styles.captionTop : styles.captionBottom]}>
+                <Text style={styles.captionText}>{currentCaptionText}</Text>
+              </View>
+            )}
+            {caption?.position === 'optional' && (
+              <View style={styles.ccButtonWrapper}>
+                <Button
+                  label={captionsVisible ? 'CC ✓' : 'CC'}
+                  variant="secondary"
+                  fullWidth={false}
+                  onPress={() => setCaptionsVisible((v) => !v)}
+                />
+              </View>
+            )}
+          </>
         )}
       </View>
+
+      {(chapters?.length ?? 0) > 0 && (
+        <View style={styles.chaptersSection}>
+          <Text style={typography.bodyMedium}>Capítulos</Text>
+          {chapters!.map((chapter) => (
+            <Button
+              key={chapter.id}
+              label={`${formatDuration(chapter.start_seconds)}  ${chapter.title}`}
+              variant="ghost"
+              onPress={() => {
+                player.currentTime = chapter.start_seconds;
+                player.play();
+              }}
+            />
+          ))}
+        </View>
+      )}
+
+      {transcription?.visible_to_students && !!transcription.full_text && (
+        <View style={styles.transcriptSection}>
+          <Text style={typography.bodyMedium}>Transcrição</Text>
+          <Text style={styles.transcriptText}>{transcription.full_text}</Text>
+        </View>
+      )}
 
       <View style={styles.controls}>
         <View style={styles.navRow}>
@@ -204,6 +271,22 @@ const styles = StyleSheet.create({
   player: { width: '100%', height: '100%' },
   playerPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
   placeholderText: { color: colors.textInverse, textAlign: 'center' },
+  captionBox: { position: 'absolute', left: spacing.md, right: spacing.md, alignItems: 'center' },
+  captionTop: { top: spacing.md },
+  captionBottom: { bottom: spacing.md },
+  ccButtonWrapper: { position: 'absolute', bottom: spacing.sm, right: spacing.sm },
+  captionText: {
+    color: colors.textInverse,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radius.sm,
+    textAlign: 'center',
+    fontSize: 13,
+  },
+  chaptersSection: { gap: spacing.xs },
+  transcriptSection: { gap: spacing.xs },
+  transcriptText: { ...typography.body, color: colors.textSecondary },
   controls: { padding: spacing.lg, gap: spacing.md },
   navRow: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.sm },
   celebration: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, padding: spacing.xl },
