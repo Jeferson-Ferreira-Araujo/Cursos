@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Badge, Button, Card, EmptyState, ErrorState, LoadingState, Screen, TopBar } from '@/components/ui';
+import { Badge, Button, Card, EmptyState, ErrorState, LoadingState, ProgressBar, Screen, TopBar } from '@/components/ui';
 import { colors, spacing, typography } from '@/theme';
 import { useAuth } from '@/domain/auth/AuthContext';
 import { useAsyncData } from '@/hooks/useAsyncData';
@@ -150,12 +150,21 @@ function StepRow({ step }: { step: ImproveStep }) {
     step.status === 'done' ? 'checkmark-circle' : step.status === 'error' ? 'close-circle' : step.status === 'running' ? 'ellipsis-horizontal-circle' : 'ellipse-outline';
   const color = step.status === 'done' ? colors.success : step.status === 'error' ? colors.danger : step.status === 'running' ? colors.warning : colors.textMuted;
 
+  // step.detail looks like "2/5" while running -- parse it into a real bar.
+  const progressMatch = step.status === 'running' ? step.detail?.match(/^(\d+)\/(\d+)/) : null;
+  const progress = progressMatch ? Number(progressMatch[1]) / Number(progressMatch[2]) : null;
+
   return (
     <View style={styles.stepRow}>
       <Ionicons name={icon} size={20} color={color} />
       <View style={styles.stepText}>
         <Text style={typography.body}>{step.label}</Text>
         {!!step.detail && <Text style={styles.hint}>{step.detail}</Text>}
+        {progress !== null && (
+          <View style={styles.stepProgressBar}>
+            <ProgressBar progress={progress} />
+          </View>
+        )}
       </View>
     </View>
   );
@@ -165,6 +174,7 @@ const styles = StyleSheet.create({
   hint: { ...typography.caption },
   checklist: { gap: spacing.sm },
   stepRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  stepProgressBar: { marginTop: spacing.xs },
   stepText: { flex: 1 },
   section: { gap: spacing.sm },
   suggestionCard: { gap: spacing.xs, backgroundColor: colors.surfaceMuted },

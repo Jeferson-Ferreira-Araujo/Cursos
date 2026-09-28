@@ -73,9 +73,12 @@ Deno.serve(async (req: Request) => {
     if (courseError || !course) throw new Error('Curso não encontrado.');
 
     const prompt = buildPrompt(course.title, course.description ?? '');
-    const coverIds: string[] = [];
 
-    for (let i = 0; i < CANDIDATE_COUNT; i++) {
+    // Generated in parallel: each candidate is independent, and Pollinations
+    // can take 10-40s per image -- running them one at a time made this step
+    // feel stuck for well over a minute with a single generic spinner.
+    let completedCount = 0;
+    const generateOne = async (): Promise<string> => {
       const seed = Math.floor(Math.random() * 1_000_000);
       const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=576&seed=${seed}&nologo=true`;
 
@@ -99,11 +102,26 @@ Deno.serve(async (req: Request) => {
         .single();
       if (insertError || !coverRow) throw new Error('Falha ao registrar a capa gerada.');
 
-      coverIds.push(coverRow.id);
+      completedCount++;
+      // Best-effort progress ping the client can poll for -- ignored if it fails.
+      adminClient
+        .from('video_processing_jobs')
+        .update({ output: { generated: completedCount, total: CANDIDATE_COUNT } })
+        .eq('id', jobId)
+        .then(() => undefined);
+
+      return coverRow.id;
+    };
+
+    const results = await Promise.allSettled(Array.from({ length: CANDIDATE_COUNT }, generateOne));
+    const coverIds = results.filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled').map((r) => r.value);
+    if (coverIds.length === 0) {
+      const firstError = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+      throw firstError?.reason instanceof Error ? firstError.reason : new Error('Falha ao gerar as capas.');
     }
 
     await adminClient.from('ai_usage_events').insert({ account_id: job.account_id, job_id: jobId, usage_type: 'image_generation', quantity: coverIds.length });
-    await markCompleted(adminClient, jobId, { cover_ids: coverIds });
+    await markCompleted(adminClient, jobId, { cover_ids: coverIds, generated: coverIds.length, total: CANDIDATE_COUNT });
 
     return jsonResponse({ cover_ids: coverIds });
   } catch (err) {

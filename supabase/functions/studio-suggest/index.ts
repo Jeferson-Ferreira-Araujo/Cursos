@@ -111,6 +111,12 @@ Deno.serve(async (req: Request) => {
     if (transcriptionError || !transcription || transcription.status !== 'ready' || !transcription.full_text) {
       throw new Error('Gere a transcrição desta aula antes de pedir sugestões.');
     }
+    // A video with no speech (or too little of it) produces a near-empty
+    // transcript; sending that to the model just makes it ask back for the
+    // transcript, which looked like a bogus "suggestion" to the Creator.
+    if (transcription.full_text.trim().length < 15) {
+      throw new Error('Não foi possível detectar fala neste vídeo. As sugestões de IA precisam de uma aula narrada.');
+    }
 
     if (job.job_type === 'chapter_suggestion') {
       const segments = (transcription.segments ?? []) as { start: number; text: string }[];

@@ -24,14 +24,22 @@ const EDGE_FUNCTION_BY_JOB_TYPE: Record<JobType, string> = {
  * that actually does the work. The function runs to completion server-side
  * even if the app is closed right after this call returns -- the job row is
  * always the source of truth for status, not the fetch response.
+ *
+ * `onProgress` is polled from the job row while the request is in flight
+ * (some jobs, like cover generation, write incremental `{generated, total}`
+ * progress into `output` as they go) so the caller can show something better
+ * than a single indefinite spinner for a call that can take a minute.
  */
-export async function createAndRunJob(params: {
-  accountId: string;
-  jobType: JobType;
-  courseId?: string;
-  lessonId?: string;
-  videoId?: string;
-}): Promise<ProcessingJob> {
+export async function createAndRunJob(
+  params: {
+    accountId: string;
+    jobType: JobType;
+    courseId?: string;
+    lessonId?: string;
+    videoId?: string;
+  },
+  onProgress?: (job: ProcessingJob) => void
+): Promise<ProcessingJob> {
   const { data: job, error } = await supabase
     .from('video_processing_jobs')
     .insert({
@@ -45,9 +53,26 @@ export async function createAndRunJob(params: {
     .single();
   if (error || !job) throw error ?? new Error('Falha ao criar tarefa.');
 
-  const functionName = EDGE_FUNCTION_BY_JOB_TYPE[params.jobType];
-  const { error: invokeError } = await supabase.functions.invoke(functionName, { body: { job_id: job.id } });
-  if (invokeError) throw invokeError;
+  const pollInterval = onProgress
+    ? setInterval(() => {
+        fetchJob(job.id)
+          .then(onProgress)
+          .catch(() => undefined);
+      }, 1500)
+    : null;
+
+  try {
+    const functionName = EDGE_FUNCTION_BY_JOB_TYPE[params.jobType];
+    const { error: invokeError } = await supabase.functions.invoke(functionName, { body: { job_id: job.id } });
+    if (invokeError) {
+      // supabase-js only surfaces "non-2xx status code" here; the real,
+      // human-readable message is whatever the function wrote to the job row.
+      const failedJob = await fetchJob(job.id).catch(() => null);
+      throw new Error(failedJob?.error_message || invokeError.message);
+    }
+  } finally {
+    if (pollInterval) clearInterval(pollInterval);
+  }
 
   return job;
 }

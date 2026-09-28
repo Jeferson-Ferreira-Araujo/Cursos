@@ -3,7 +3,7 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
-import { Badge, Button, Card, LoadingState, TextField } from '@/components/ui';
+import { Badge, Button, Card, LoadingState, ProgressBar, TextField } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
 import { colors, radius, spacing, typography } from '@/theme';
 import { formatDuration } from '@/utils/format';
@@ -12,6 +12,7 @@ import type { LessonWithVideo } from '@/domain/lessons/types';
 import { updateLesson } from '@/domain/lessons/api';
 import { CaptionPositionPicker } from './CaptionPositionPicker';
 import { useLessonStudioData } from '../useLessonStudioData';
+import { useJobProgress } from '../useJobProgress';
 import {
   acceptSuggestion,
   createAndRunJob,
@@ -32,6 +33,14 @@ const SUGGESTION_LABELS: Record<AiSuggestion['suggestion_type'], string> = {
   key_points: 'Principais pontos',
 };
 
+const ESTIMATED_SECONDS: Record<string, number> = {
+  transcription: 20,
+  title: 8,
+  description: 8,
+  summary: 8,
+  chapters: 10,
+};
+
 export function LessonStudioPanel({ accountId, lesson, onLessonUpdated }: { accountId: string; lesson: LessonWithVideo; onLessonUpdated: () => void }) {
   const videoId = lesson.video_id;
   const videoReady = lesson.video?.status === 'ready';
@@ -41,6 +50,7 @@ export function LessonStudioPanel({ accountId, lesson, onLessonUpdated }: { acco
   const [editingTranscript, setEditingTranscript] = useState(false);
   const [transcriptDraft, setTranscriptDraft] = useState('');
   const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
+  const jobProgress = useJobProgress(runningJob !== null, runningJob ? ESTIMATED_SECONDS[runningJob] : undefined);
 
   const hasTranscription = transcription.data?.status === 'ready';
 
@@ -48,7 +58,7 @@ export function LessonStudioPanel({ accountId, lesson, onLessonUpdated }: { acco
     if (!videoId) return;
     setRunningJob(key);
     try {
-      await createAndRunJob({ accountId, jobType, lessonId: lesson.id, videoId, courseId: lesson.course_id });
+      await createAndRunJob({ accountId, jobType, lessonId: lesson.id, videoId, courseId: lesson.course_id }, jobProgress.onProgress);
       await refreshAll();
     } catch (err) {
       Alert.alert('Erro', getErrorMessage(err));
@@ -147,6 +157,13 @@ export function LessonStudioPanel({ accountId, lesson, onLessonUpdated }: { acco
       <Text style={styles.hint}>Deixe esta aula pronta para ensinar.</Text>
 
       {!videoReady && <Text style={styles.hint}>Aguarde o vídeo terminar de processar para usar as melhorias.</Text>}
+
+      {runningJob !== null && (
+        <View style={styles.progressBlock}>
+          <ProgressBar progress={jobProgress.progress} />
+          <Text style={styles.hint}>Trabalhando... {jobProgress.elapsedSeconds}s</Text>
+        </View>
+      )}
 
       {videoReady && (
         <>
@@ -273,6 +290,7 @@ export function LessonStudioPanel({ accountId, lesson, onLessonUpdated }: { acco
 const styles = StyleSheet.create({
   card: { gap: spacing.md },
   hint: { ...typography.caption },
+  progressBlock: { gap: spacing.xs },
   section: { gap: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
   label: { ...typography.caption, color: colors.textSecondary },
   row: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
