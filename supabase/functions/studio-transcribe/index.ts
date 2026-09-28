@@ -88,7 +88,7 @@ Deno.serve(async (req: Request) => {
       throw new Error('GROQ_API_KEY não está configurada nos secrets do projeto Supabase. Peça ao administrador para configurá-la.');
     }
 
-    const { data: video, error: videoError } = await adminClient.from('videos').select('storage_path').eq('id', job.video_id).single();
+    const { data: video, error: videoError } = await adminClient.from('videos').select('storage_path, original_filename').eq('id', job.video_id).single();
     if (videoError || !video) throw new Error('Vídeo não encontrado.');
 
     const { data: fileBlob, error: downloadError } = await adminClient.storage.from('lesson-videos').download(video.storage_path);
@@ -100,8 +100,14 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Groq infers the audio/video format from the filename's extension, not
+    // the blob's mime type -- a filename with no (or the wrong) extension
+    // gets rejected as "unsupported_audio_format" even for a valid mp4.
+    const extensionMatch = (video.original_filename || video.storage_path).match(/\.([a-zA-Z0-9]+)$/);
+    const extension = extensionMatch ? extensionMatch[1].toLowerCase() : 'mp4';
+
     const formData = new FormData();
-    formData.append('file', fileBlob, 'lesson-video');
+    formData.append('file', fileBlob, `lesson-video.${extension}`);
     formData.append('model', 'whisper-large-v3-turbo');
     formData.append('response_format', 'verbose_json');
 

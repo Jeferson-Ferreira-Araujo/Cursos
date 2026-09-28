@@ -79,7 +79,12 @@ Deno.serve(async (req: Request) => {
       const seed = Math.floor(Math.random() * 1_000_000);
       const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=576&seed=${seed}&nologo=true`;
 
-      const imageResponse = await fetch(imageUrl);
+      // Pollinations occasionally returns a transient 5xx under load -- one
+      // retry clears most of those instead of failing the whole batch.
+      let imageResponse = await fetch(imageUrl);
+      if (!imageResponse.ok) {
+        imageResponse = await fetch(imageUrl);
+      }
       if (!imageResponse.ok) throw new Error(`Falha ao gerar imagem de capa (Pollinations): ${imageResponse.status}`);
       const imageBytes = await imageResponse.arrayBuffer();
       const storagePath = `${job.account_id}/${job.course_id}/ai-cover-${seed}.jpg`;

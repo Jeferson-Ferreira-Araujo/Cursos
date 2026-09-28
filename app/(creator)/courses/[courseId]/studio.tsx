@@ -9,8 +9,15 @@ import { useAsyncData } from '@/hooks/useAsyncData';
 import { fetchCourse } from '@/domain/courses/api';
 import { fetchLessons } from '@/domain/lessons/api';
 import { acceptSuggestion, rejectSuggestion } from '@/domain/studio/api';
-import { useImproveCourse, type ImproveStep } from '@/domain/studio/useImproveCourse';
+import { useImproveCourse, type ImproveStep, type ImproveStepKey } from '@/domain/studio/useImproveCourse';
 import { getErrorMessage } from '@/utils/errors';
+
+const INDIVIDUAL_ACTIONS: { key: ImproveStepKey; label: string }[] = [
+  { key: 'transcribe', label: '✨ Gerar legendas' },
+  { key: 'suggestions', label: '✨ Título, descrição e resumo' },
+  { key: 'chapters', label: '✨ Sugerir capítulos' },
+  { key: 'cover', label: '✨ Gerar capa' },
+];
 
 export default function CourseStudioScreen() {
   const { courseId } = useLocalSearchParams<{ courseId: string }>();
@@ -19,16 +26,26 @@ export default function CourseStudioScreen() {
   const { data: course } = useAsyncData(() => fetchCourse(courseId), [courseId]);
   const { data: lessons, loading, error, refresh } = useAsyncData(() => fetchLessons(courseId), [courseId]);
 
-  const { steps, running, newSuggestions, coverGenerated, run } = useImproveCourse(account!.id, courseId);
+  const { steps, running, newSuggestions, coverGenerated, runAll, runStep } = useImproveCourse(account!.id, courseId);
 
   const readyLessons = useMemo(() => (lessons ?? []).filter((l) => l.video?.status === 'ready'), [lessons]);
 
-  async function handleImproveCourse() {
+  function requireReadyLessons() {
     if (readyLessons.length === 0) {
-      Alert.alert('Nenhuma aula pronta', 'Envie e aguarde pelo menos um vídeo terminar de processar antes de melhorar o curso.');
-      return;
+      Alert.alert('Nenhuma aula pronta', 'Envie e aguarde pelo menos um vídeo terminar de processar antes de usar o Studio.');
+      return false;
     }
-    await run(lessons ?? [], !!course?.cover_path);
+    return true;
+  }
+
+  async function handleImproveCourse() {
+    if (!requireReadyLessons()) return;
+    await runAll(lessons ?? [], !!course?.cover_path);
+  }
+
+  async function handleRunStep(key: ImproveStepKey) {
+    if (!requireReadyLessons()) return;
+    await runStep(key, lessons ?? [], !!course?.cover_path);
   }
 
   async function handleAccept(suggestionId: string) {
@@ -58,7 +75,23 @@ export default function CourseStudioScreen() {
       <TopBar title="Savia Studio" />
       <Text style={styles.hint}>Deixe suas aulas prontas para ensinar.</Text>
 
-      <Button label="✨ Melhorar meu curso" onPress={handleImproveCourse} loading={running} />
+      <Button label="✨ Melhorar meu curso (fazer tudo)" onPress={handleImproveCourse} loading={running} />
+
+      <View style={styles.section}>
+        <Text style={styles.label}>Ou escolha uma ação para rodar em todas as aulas</Text>
+        <View style={styles.row}>
+          {INDIVIDUAL_ACTIONS.map((action) => (
+            <Button
+              key={action.key}
+              label={action.label}
+              variant="secondary"
+              fullWidth={false}
+              disabled={running}
+              onPress={() => handleRunStep(action.key)}
+            />
+          ))}
+        </View>
+      </View>
 
       {steps.length > 0 && (
         <Card style={styles.checklist}>
@@ -78,7 +111,7 @@ export default function CourseStudioScreen() {
           <Text style={styles.hint}>Você decide o que aplicar. Nada foi alterado ainda.</Text>
           {newSuggestions.map((suggestion) => (
             <Card key={suggestion.id} style={styles.suggestionCard}>
-              <Text style={styles.label}>{suggestion.suggestion_type}</Text>
+              <Text style={[styles.label, styles.capitalize]}>{suggestion.suggestion_type}</Text>
               <Text style={typography.body}>{suggestion.content}</Text>
               <View style={styles.row}>
                 <Button label="Ignorar" variant="secondary" fullWidth={false} onPress={() => handleReject(suggestion.id)} />
@@ -135,7 +168,8 @@ const styles = StyleSheet.create({
   stepText: { flex: 1 },
   section: { gap: spacing.sm },
   suggestionCard: { gap: spacing.xs, backgroundColor: colors.surfaceMuted },
-  label: { ...typography.caption, color: colors.textSecondary, textTransform: 'capitalize' },
-  row: { flexDirection: 'row', gap: spacing.sm },
+  label: { ...typography.caption, color: colors.textSecondary },
+  capitalize: { textTransform: 'capitalize' },
+  row: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
   lessonRow: { gap: spacing.xs },
 });
