@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { videoProvider } from '@/domain/videos';
 import { createLesson, nextOrderIndex } from '@/domain/lessons/api';
 
@@ -14,70 +14,79 @@ export type QueueItem = {
   errorMessage?: string;
 };
 
+type PickedFile = { id: string; filename: string; uri: string; mimeType: string };
+
 /**
  * Uploads a batch of locally-picked videos one at a time (sequential, to keep
  * memory/bandwidth predictable on a phone) and turns each successful upload
  * into a lesson automatically, in the order they were selected.
+ *
+ * `start` deliberately takes the exact files to process as an argument
+ * instead of reading them back from React state: state updates are
+ * asynchronous, so a "start" that closed over `items` from the render where
+ * it was created could still see the array from before the newest batch was
+ * enqueued.
  */
 export function useVideoUploadQueue(accountId: string, courseId: string) {
   const [items, setItems] = useState<QueueItem[]>([]);
   const [running, setRunning] = useState(false);
+  const runningRef = useRef(false);
 
   function patchItem(id: string, patch: Partial<QueueItem>) {
     setItems((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
   }
 
-  const enqueue = useCallback((files: { id: string; filename: string; uri: string; mimeType: string }[]) => {
-    setItems((current) => [
-      ...current,
-      ...files.map((f) => ({ ...f, status: 'queued' as QueueItemStatus, progress: 0 })),
-    ]);
-  }, []);
+  const enqueueAndStart = useCallback(
+    async (files: PickedFile[]) => {
+      setItems((current) => [
+        ...current,
+        ...files.map((f) => ({ ...f, status: 'queued' as QueueItemStatus, progress: 0 })),
+      ]);
 
-  const start = useCallback(async () => {
-    if (running) return;
-    setRunning(true);
+      if (runningRef.current) return;
+      runningRef.current = true;
+      setRunning(true);
 
-    let orderIndex = await nextOrderIndex(courseId);
+      let orderIndex = await nextOrderIndex(courseId);
 
-    // Snapshot queued ids up front so items added mid-run are picked up by the next call.
-    const queued = items.filter((item) => item.status === 'queued');
+      for (const file of files) {
+        patchItem(file.id, { status: 'uploading', progress: 0 });
+        try {
+          const result = await videoProvider.upload({
+            accountId,
+            courseId,
+            localUri: file.uri,
+            filename: file.filename,
+            mimeType: file.mimeType,
+            onProgress: (fraction) => patchItem(file.id, { progress: fraction }),
+          });
 
-    for (const item of queued) {
-      patchItem(item.id, { status: 'uploading', progress: 0 });
-      try {
-        const result = await videoProvider.upload({
-          accountId,
-          courseId,
-          localUri: item.uri,
-          filename: item.filename,
-          mimeType: item.mimeType,
-          onProgress: (fraction) => patchItem(item.id, { progress: fraction }),
-        });
+          patchItem(file.id, { status: 'creating_lesson', progress: 1 });
 
-        patchItem(item.id, { status: 'creating_lesson', progress: 1 });
+          await createLesson({
+            accountId,
+            courseId,
+            title: file.filename.replace(/\.[^/.]+$/, ''),
+            videoId: result.videoId,
+            orderIndex: orderIndex++,
+          });
 
-        await createLesson({
-          accountId,
-          courseId,
-          title: item.filename.replace(/\.[^/.]+$/, ''),
-          videoId: result.videoId,
-          orderIndex: orderIndex++,
-        });
-
-        patchItem(item.id, { status: 'done' });
-      } catch (err) {
-        patchItem(item.id, {
-          status: 'error',
-          errorMessage: err instanceof Error ? err.message : 'Falha no envio.',
-        });
+          patchItem(file.id, { status: 'done' });
+        } catch (err) {
+          patchItem(file.id, {
+            status: 'error',
+            errorMessage: err instanceof Error ? err.message : 'Falha no envio.',
+          });
+        }
       }
-    }
 
-    setRunning(false);
-  }, [accountId, courseId, running, items]);
+      runningRef.current = false;
+      setRunning(false);
+    },
+    [accountId, courseId]
+  );
 
   const reset = useCallback(() => setItems([]), []);
 
-  return { items, running, enqueue, start, reset };
+  return { items, running, enqueueAndStart, reset };
 }

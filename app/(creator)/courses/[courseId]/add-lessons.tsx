@@ -12,7 +12,7 @@ import { useVideoUploadQueue } from '@/domain/videos/useVideoUploadQueue';
 export default function AddLessonsScreen() {
   const { courseId } = useLocalSearchParams<{ courseId: string }>();
   const { account } = useAuth();
-  const { items, running, enqueue, start } = useVideoUploadQueue(account!.id, courseId);
+  const { items, running, enqueueAndStart } = useVideoUploadQueue(account!.id, courseId);
   const [pickingError, setPickingError] = useState<string | null>(null);
 
   const doneCount = items.filter((i) => i.status === 'done').length;
@@ -40,8 +40,7 @@ export default function AddLessonsScreen() {
       mimeType: asset.mimeType ?? 'video/mp4',
     }));
 
-    enqueue(files);
-    setTimeout(start, 0);
+    enqueueAndStart(files);
   }
 
   function handleFinish() {
