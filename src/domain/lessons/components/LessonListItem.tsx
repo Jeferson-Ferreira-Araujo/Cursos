@@ -1,8 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Badge, Card } from '@/components/ui';
-import { colors, spacing, typography } from '@/theme';
+import { colors, radius, spacing, typography } from '@/theme';
 import { formatDuration } from '@/utils/format';
+import { getThumbnailUrl } from '@/domain/studio/api';
 import type { LessonWithVideo } from '../types';
 
 const VIDEO_STATUS_LABEL: Record<string, { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' }> = {
@@ -30,10 +32,18 @@ export function LessonListItem({
   canMoveDown: boolean;
 }) {
   const status = lesson.video ? VIDEO_STATUS_LABEL[lesson.video.status] : undefined;
+  const thumbnailUrl = getThumbnailUrl(lesson.video?.thumbnail_path ?? null);
 
   return (
     <Card style={styles.card}>
       <Text style={styles.index}>{index + 1}</Text>
+      <View style={styles.thumbnail}>
+        {thumbnailUrl ? (
+          <Image source={{ uri: thumbnailUrl }} style={styles.thumbnailImage} contentFit="cover" />
+        ) : (
+          <Ionicons name="videocam-outline" size={16} color={colors.textMuted} />
+        )}
+      </View>
       <Pressable style={styles.info} onPress={onPress}>
         <Text style={typography.bodyMedium} numberOfLines={1}>
           {lesson.title}
@@ -56,6 +66,16 @@ export function LessonListItem({
 const styles = StyleSheet.create({
   card: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.md },
   index: { ...typography.caption, width: 20, textAlign: 'center' },
+  thumbnail: {
+    width: 48,
+    height: 32,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  thumbnailImage: { width: '100%', height: '100%' },
   info: { flex: 1, gap: 2 },
   meta: { ...typography.small },
   reorderButtons: { gap: 2 },

@@ -74,9 +74,16 @@ export function useVideoUploadQueue(accountId: string, courseId: string) {
           });
 
           // Best-effort: a still frame is a nice-to-have, never worth failing
-          // the whole upload over if extraction/upload of it hiccups.
+          // the whole upload over if extraction/upload of it hiccups. A fixed
+          // 1s seek time fails outright on very short clips (common in quick
+          // test recordings), so fall back to the very first frame.
           try {
-            const { uri: thumbnailUri } = await VideoThumbnails.getThumbnailAsync(file.uri, { time: 1000 });
+            let thumbnailUri: string;
+            try {
+              thumbnailUri = (await VideoThumbnails.getThumbnailAsync(file.uri, { time: 1000 })).uri;
+            } catch {
+              thumbnailUri = (await VideoThumbnails.getThumbnailAsync(file.uri, { time: 0 })).uri;
+            }
             const thumbnailPath = await uploadLessonThumbnail(accountId, result.videoId, thumbnailUri);
             await setLessonThumbnail(result.videoId, thumbnailPath);
           } catch {
