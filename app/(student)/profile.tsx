@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
 import { Avatar, Button, Card, Screen, TextField } from '@/components/ui';
 import { colors, spacing, typography } from '@/theme';
 import { useAuth } from '@/domain/auth/AuthContext';
@@ -8,10 +9,11 @@ import { nameSchema, validate } from '@/utils/validation';
 import { getErrorMessage } from '@/utils/errors';
 
 export default function StudentProfileScreen() {
-  const { session, profile, refreshProfile } = useAuth();
+  const { session, profile, account, refreshProfile, setActiveRole, becomeCreator } = useAuth();
   const [fullName, setFullName] = useState('');
   const [saving, setSaving] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -33,6 +35,22 @@ export default function StudentProfileScreen() {
       setError(getErrorMessage(err));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleCreatorMode() {
+    setSwitching(true);
+    try {
+      if (account) {
+        setActiveRole('creator');
+      } else {
+        await becomeCreator(`Cursos de ${fullName || 'você'}`);
+      }
+      router.replace('/(creator)');
+    } catch (err) {
+      Alert.alert('Erro', getErrorMessage(err));
+    } finally {
+      setSwitching(false);
     }
   }
 
@@ -68,6 +86,13 @@ export default function StudentProfileScreen() {
         {!!error && <Text style={styles.error}>{error}</Text>}
         <Button label="Salvar" variant="secondary" onPress={handleSave} loading={saving} />
       </Card>
+
+      <Button
+        label={account ? 'Ir para o modo Criador' : 'Criar meu curso'}
+        variant="secondary"
+        onPress={handleCreatorMode}
+        loading={switching}
+      />
 
       <Button label="Sair da conta" variant="danger" onPress={handleSignOut} loading={signingOut} />
     </Screen>

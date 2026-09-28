@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
-import { fetchMyAccount } from '@/domain/accounts/api';
+import { createCreatorAccount, fetchMyAccount } from '@/domain/accounts/api';
 import type { Account } from '@/domain/accounts/types';
 import { fetchMyProfile } from './api';
 import type { Profile } from './types';
@@ -21,6 +21,8 @@ type AuthState = {
   needsOnboarding: boolean;
   activeRole: ActiveRole;
   setActiveRole: (role: ActiveRole) => void;
+  /** Provisions a Creator account for the current user if they don't have one yet, then switches into Creator mode. */
+  becomeCreator: (accountName: string) => Promise<void>;
   refreshAccount: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 };
@@ -37,16 +39,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [activeRoleState, setActiveRoleState] = useState<ActiveRole>('creator');
 
   const loadUserContext = useCallback(async (userId: string) => {
-    const [profileResult, accountResult, invitationResult] = await Promise.all([
-      fetchMyProfile(userId),
-      fetchMyAccount(userId),
-      supabase.from('invitations').select('id').eq('user_id', userId).limit(1),
-    ]);
+    try {
+      const [profileResult, accountResult, invitationResult] = await Promise.all([
+        fetchMyProfile(userId),
+        fetchMyAccount(userId),
+        supabase.from('invitations').select('id').eq('user_id', userId).limit(1),
+      ]);
 
-    setProfile(profileResult);
-    setAccount(accountResult);
-    setIsStudent(!!invitationResult.data && invitationResult.data.length > 0);
-    setRoleLoaded(true);
+      setProfile(profileResult);
+      setAccount(accountResult);
+      setIsStudent(!!invitationResult.data && invitationResult.data.length > 0);
+    } catch (err) {
+      // Swallow the error instead of leaving the caller's `await` rejected:
+      // getting stuck on a spinner forever (bootstrapping never flips to
+      // false) is worse than briefly showing a null profile/account after a
+      // transient network hiccup.
+      console.warn('Failed to load user context', err);
+    } finally {
+      setRoleLoaded(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -93,6 +104,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(nextProfile);
   }, [session]);
 
+  const becomeCreator = useCallback(
+    async (accountName: string) => {
+      if (!session) return;
+      if (!account) {
+        await createCreatorAccount(accountName);
+        const nextAccount = await fetchMyAccount(session.user.id);
+        setAccount(nextAccount);
+      }
+      setActiveRoleState('creator');
+    },
+    [session, account]
+  );
+
   const activeRole: ActiveRole = account ? activeRoleState : 'student';
   const needsOnboarding = roleLoaded && !!profile && !profile.onboarding_completed;
 
@@ -106,10 +130,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       needsOnboarding,
       activeRole,
       setActiveRole: setActiveRoleState,
+      becomeCreator,
       refreshAccount,
       refreshProfile,
     }),
-    [bootstrapping, session, profile, account, isStudent, needsOnboarding, activeRole, refreshAccount, refreshProfile]
+    [
+      bootstrapping,
+      session,
+      profile,
+      account,
+      isStudent,
+      needsOnboarding,
+      activeRole,
+      becomeCreator,
+      refreshAccount,
+      refreshProfile,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

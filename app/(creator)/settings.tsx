@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
 import { Avatar, Button, Card, Screen, TextField } from '@/components/ui';
 import { colors, spacing, typography } from '@/theme';
 import { useAuth } from '@/domain/auth/AuthContext';
@@ -10,7 +11,7 @@ import { nameSchema, validate } from '@/utils/validation';
 import { getErrorMessage } from '@/utils/errors';
 
 export default function CreatorSettingsScreen() {
-  const { session, profile, account, refreshProfile, refreshAccount } = useAuth();
+  const { session, profile, account, refreshProfile, refreshAccount, setActiveRole } = useAuth();
   const [fullName, setFullName] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
@@ -94,6 +95,15 @@ export default function CreatorSettingsScreen() {
         <TextField label="Nome do seu negócio" value={businessName} onChangeText={setBusinessName} />
         <Button label="Salvar" variant="secondary" onPress={handleSaveAccount} loading={savingAccount} />
       </Card>
+
+      <Button
+        label="Ver como Aluno"
+        variant="secondary"
+        onPress={() => {
+          setActiveRole('student');
+          router.replace('/(student)');
+        }}
+      />
 
       <Button label="Sair da conta" variant="danger" onPress={handleSignOut} loading={signingOut} />
     </Screen>
