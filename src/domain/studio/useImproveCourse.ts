@@ -170,7 +170,7 @@ export function useImproveCourse(accountId: string, courseId: string) {
         }
       );
       setCoverGenerated(true);
-      updateStep('cover', { status: 'done', detail: '3 opções geradas' });
+      updateStep('cover', { status: 'done', detail: 'Capa gerada' });
     } catch (err) {
       updateStep('cover', { status: 'error', detail: err instanceof Error ? err.message : 'Falhou' });
     }

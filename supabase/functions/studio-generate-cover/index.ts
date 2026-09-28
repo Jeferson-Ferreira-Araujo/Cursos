@@ -18,7 +18,9 @@ function jsonResponse(body: unknown, status = 200) {
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const CANDIDATE_COUNT = 3;
+// A single, good candidate instead of a gallery -- simpler and ~3x faster
+// than generating multiple options for the Creator to compare.
+const CANDIDATE_COUNT = 1;
 
 function buildPrompt(title: string, description: string): string {
   const base = `Capa de curso online sobre "${title}". ${description}`.trim();
