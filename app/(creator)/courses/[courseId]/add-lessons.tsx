@@ -48,7 +48,10 @@ export default function AddLessonsScreen() {
       Alert.alert('Aguarde', 'O envio ainda está em andamento.');
       return;
     }
-    router.back();
+    // Straight to the Studio screen for this course instead of back to the
+    // lessons list -- the whole point of finishing an upload is to see what
+    // Savia can improve next, not to hunt for it afterwards.
+    router.replace(`/(creator)/courses/${courseId}/studio`);
   }
 
   return (
@@ -83,7 +86,7 @@ export default function AddLessonsScreen() {
 
           <Button label="Adicionar mais vídeos" variant="secondary" onPress={handlePickVideos} disabled={running} />
           <Button
-            label={allDone ? 'Concluir' : `Enviando ${doneCount}/${items.length}...`}
+            label={allDone ? 'Ver sugestões da Savia' : `Enviando ${doneCount}/${items.length}...`}
             onPress={handleFinish}
             loading={running}
             disabled={!allDone && !running}
